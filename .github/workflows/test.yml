@@ -2,8 +2,8 @@ name: Test fipiran scraper
 
 on:
  schedule:
-   - cron: "15 4,5 * * *"
-  workflow_dispatch:
+  - cron: "00 11 * * *"
+ workflow_dispatch:
 
 jobs:
   run-script:
