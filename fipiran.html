@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>داشبورد رتبه صندوق | Fund Ranking Dashboard</title>
+  <meta name="description" content="داشبورد رتبه‌بندی صندوق در میان هم‌گروه‌ها" />
+
+  <!-- Tailwind via Play CDN (compiled at runtime) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            vazir: ['Vazirmatn', 'system-ui', 'sans-serif'],
+          },
+        },
+      },
+    };
+  </script>
+
+  <!-- Vazirmatn font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- ECharts for charts -->
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+
+  <style>
+    body { font-family: 'Vazirmatn', system-ui, sans-serif; }
+    /* Custom scrollbar for the comparison table */
+    .nice-scroll::-webkit-scrollbar { height: 8px; width: 8px; }
+    .nice-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 4px; }
+    .nice-scroll::-webkit-scrollbar-track { background: transparent; }
+    /* Loading shimmer */
+    .shimmer { background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-emerald-50/50 via-white to-teal-50/50 dark:from-emerald-950/10 dark:via-gray-950 dark:to-teal-950/10 min-h-screen">
+
+  <!-- Top bar -->
+  <header class="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-10">
+    <div class="max-w-7xl mx-auto px-4 md:px-6 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+        </div>
+        <span class="font-semibold text-sm">داشبورد رتبه صندوق</span>
+      </div>
+      <button id="refresh-btn" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
+        به‌روزرسانی
+      </button>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 md:px-6 py-6 space-y-6">
+    <!-- Fund header (rendered by JS) -->
+    <div id="fund-header"></div>
+
+    <!-- Controls -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="bg-white dark:bg-gray-900 rounded-xl border p-4 shadow-sm">
+        <div id="period-selector"></div>
+      </div>
+      <div class="bg-white dark:bg-gray-900 rounded-xl border p-4 shadow-sm">
+        <div id="range-selector"></div>
+      </div>
+    </div>
+
+    <!-- Stat cards -->
+    <div id="stats-cards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"></div>
+
+    <!-- Rank chart -->
+    <div class="bg-white dark:bg-gray-900 rounded-xl border shadow-sm">
+      <div class="p-6 border-b">
+        <div class="flex items-center justify-between">
+          <h3 class="font-semibold" id="rank-chart-title">روند رتبه</h3>
+          <span class="text-xs text-muted-foreground">محور عمودی معکوس است — رتبه ۱ (بهترین) در بالا</span>
+        </div>
+      </div>
+      <div id="rank-chart" class="w-full" style="height: 380px; padding: 8px 12px;"></div>
+      <div id="rank-legend" class="flex flex-wrap gap-3 pb-4 px-6 text-xs justify-center"></div>
+    </div>
+
+    <!-- Value chart -->
+    <div class="bg-white dark:bg-gray-900 rounded-xl border shadow-sm">
+      <div class="p-6 border-b">
+        <div class="flex items-center justify-between">
+          <h3 class="font-semibold" id="value-chart-title">روند بازده</h3>
+          <span class="text-xs text-muted-foreground">ارزش به درصد</span>
+        </div>
+      </div>
+      <div id="value-chart" class="w-full" style="height: 300px; padding: 8px 12px;"></div>
+    </div>
+
+    <!-- Period comparison table -->
+    <div class="bg-white dark:bg-gray-900 rounded-xl border shadow-sm">
+      <div class="p-6 border-b">
+        <h3 class="font-semibold">مقایسه عملکرد در بازه‌های زمانی مختلف</h3>
+      </div>
+      <div class="overflow-x-auto nice-scroll">
+        <table class="w-full text-sm">
+          <thead class="bg-muted/50">
+            <tr>
+              <th class="text-right p-3 font-medium">بازه</th>
+              <th class="text-right p-3 font-medium">رتبه</th>
+              <th class="text-right p-3 font-medium">از هم‌گروه</th>
+              <th class="text-right p-3 font-medium">صدک</th>
+              <th class="text-right p-3 font-medium">بازده</th>
+              <th class="text-right p-3 font-medium">کیفیت</th>
+              <th class="text-right p-3 font-medium w-[140px]">موقعیت</th>
+            </tr>
+          </thead>
+          <tbody id="comparison-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="bg-muted/40 rounded-xl border border-none p-4 md:p-6 text-xs text-muted-foreground space-y-2">
+      <div id="footer-info" class="flex flex-wrap gap-x-6 gap-y-1"></div>
+      <div class="text-[11px] opacity-80 pt-2 border-t">
+        داده‌ها به‌صورت آماده (inline) در همین فایل قرار دارند — برای به‌روزرسانی، متغیر <code class="bg-muted-foreground/10 px-1 rounded">FUND_DATA</code> را در انتهای فایل جایگزین کنید. صدک محاسبه شده: (peerGroupSize − rank) ÷ (peerGroupSize − 1) × 100. در نمودار رتبه، محور عمودی معکوس است تا رتبه ۱ در بالا قرار گیرد.
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // ============ FUND DATA (embedded) ============
+    window.FUND_DATA = [{"date":"2026-04-18","tarikh":"1405-01-29","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":28,"haftegi":44,"mahaneh":62,"fasli":29,"sheshmah":6,"salaneh":21},"values":{"roozaneh":0,"haftegi":2.24,"mahaneh":4.36,"fasli":3.16,"sheshmah":1.96,"salaneh":3.27},"fundTypeName":"در سهام"},{"date":"2026-04-19","tarikh":"1405-01-30","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":32,"haftegi":47,"mahaneh":62,"fasli":29,"sheshmah":6,"salaneh":22},"values":{"roozaneh":-0.23,"haftegi":2.23,"mahaneh":4.41,"fasli":3.26,"sheshmah":2.02,"salaneh":3.25},"fundTypeName":"در سهام"},{"date":"2026-04-20","tarikh":"1405-01-31","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":35,"haftegi":47,"mahaneh":62,"fasli":29,"sheshmah":6,"salaneh":22},"values":{"roozaneh":-0.45,"haftegi":2.13,"mahaneh":4.27,"fasli":3.4,"sheshmah":1.97,"salaneh":3.42},"fundTypeName":"در سهام"},{"date":"2026-04-21","tarikh":"1405-02-01","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":32,"haftegi":44,"mahaneh":62,"fasli":29,"sheshmah":6,"salaneh":21},"values":{"roozaneh":-0.36,"haftegi":2.18,"mahaneh":4.39,"fasli":3.33,"sheshmah":1.92,"salaneh":3.6},"fundTypeName":"در سهام"},{"date":"2026-04-22","tarikh":"1405-02-02","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":28,"haftegi":45,"mahaneh":61,"fasli":29,"sheshmah":6,"salaneh":21},"values":{"roozaneh":-0.19,"haftegi":2.36,"mahaneh":4.52,"fasli":3.49,"sheshmah":1.76,"salaneh":3.54},"fundTypeName":"در سهام"},{"date":"2026-04-23","tarikh":"1405-02-03","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":29,"haftegi":46,"mahaneh":60,"fasli":28,"sheshmah":7,"salaneh":20},"values":{"roozaneh":0.15,"haftegi":2.27,"mahaneh":4.48,"fasli":3.32,"sheshmah":1.87,"salaneh":3.4},"fundTypeName":"در سهام"},{"date":"2026-04-24","tarikh":"1405-02-04","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":31,"haftegi":48,"mahaneh":60,"fasli":28,"sheshmah":7,"salaneh":22},"values":{"roozaneh":-0.17,"haftegi":2.08,"mahaneh":4.57,"fasli":3.2,"sheshmah":1.77,"salaneh":3.42},"fundTypeName":"در سهام"},{"date":"2026-04-25","tarikh":"1405-02-05","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":31,"haftegi":47,"mahaneh":59,"fasli":29,"sheshmah":7,"salaneh":23},"values":{"roozaneh":-0.45,"haftegi":2.15,"mahaneh":4.43,"fasli":3.19,"sheshmah":1.76,"salaneh":3.34},"fundTypeName":"در سهام"},{"date":"2026-04-26","tarikh":"1405-02-06","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":34,"haftegi":45,"mahaneh":58,"fasli":30,"sheshmah":6,"salaneh":24},"values":{"roozaneh":-0.36,"haftegi":2.16,"mahaneh":4.36,"fasli":3.14,"sheshmah":1.9,"salaneh":3.17},"fundTypeName":"در سهام"},{"date":"2026-04-27","tarikh":"1405-02-07","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":33,"haftegi":47,"mahaneh":60,"fasli":30,"sheshmah":5,"salaneh":24},"values":{"roozaneh":-0.42,"haftegi":2.34,"mahaneh":4.44,"fasli":2.97,"sheshmah":1.85,"salaneh":3.35},"fundTypeName":"در سهام"},{"date":"2026-04-28","tarikh":"1405-02-08","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":29,"haftegi":45,"mahaneh":60,"fasli":30,"sheshmah":6,"salaneh":24},"values":{"roozaneh":-0.67,"haftegi":2.37,"mahaneh":4.44,"fasli":2.91,"sheshmah":1.97,"salaneh":3.33},"fundTypeName":"در سهام"},{"date":"2026-04-29","tarikh":"1405-02-09","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":25,"haftegi":47,"mahaneh":61,"fasli":31,"sheshmah":6,"salaneh":22},"values":{"roozaneh":-0.66,"haftegi":2.34,"mahaneh":4.59,"fasli":2.91,"sheshmah":2.11,"salaneh":3.28},"fundTypeName":"در سهام"},{"date":"2026-04-30","tarikh":"1405-02-10","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":26,"haftegi":45,"mahaneh":62,"fasli":30,"sheshmah":7,"salaneh":23},"values":{"roozaneh":-0.9,"haftegi":2.25,"mahaneh":4.44,"fasli":2.74,"sheshmah":2.23,"salaneh":3.32},"fundTypeName":"در سهام"},{"date":"2026-05-01","tarikh":"1405-02-11","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":30,"haftegi":44,"mahaneh":63,"fasli":30,"sheshmah":7,"salaneh":23},"values":{"roozaneh":-1.07,"haftegi":2.31,"mahaneh":4.58,"fasli":2.69,"sheshmah":2.15,"salaneh":3.16},"fundTypeName":"در سهام"},{"date":"2026-05-02","tarikh":"1405-02-12","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":26,"haftegi":43,"mahaneh":64,"fasli":30,"sheshmah":6,"salaneh":24},"values":{"roozaneh":-1.33,"haftegi":2.28,"mahaneh":4.77,"fasli":2.81,"sheshmah":1.99,"salaneh":3.02},"fundTypeName":"در سهام"},{"date":"2026-05-03","tarikh":"1405-02-13","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":26,"haftegi":45,"mahaneh":63,"fasli":31,"sheshmah":5,"salaneh":24},"values":{"roozaneh":-1.49,"haftegi":2.14,"mahaneh":4.56,"fasli":2.91,"sheshmah":2.13,"salaneh":3.17},"fundTypeName":"در سهام"},{"date":"2026-05-04","tarikh":"1405-02-14","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":28,"haftegi":46,"mahaneh":62,"fasli":32,"sheshmah":6,"salaneh":22},"values":{"roozaneh":-1.01,"haftegi":2.05,"mahaneh":4.67,"fasli":2.73,"sheshmah":2.29,"salaneh":3.36},"fundTypeName":"در سهام"},{"date":"2026-05-05","tarikh":"1405-02-15","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":32,"haftegi":44,"mahaneh":61,"fasli":32,"sheshmah":6,"salaneh":23},"values":{"roozaneh":-0.87,"haftegi":2.19,"mahaneh":4.5,"fasli":2.8,"sheshmah":2.17,"salaneh":3.38},"fundTypeName":"در سهام"},{"date":"2026-05-06","tarikh":"1405-02-16","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":32,"haftegi":44,"mahaneh":61,"fasli":32,"sheshmah":7,"salaneh":22},"values":{"roozaneh":-0.52,"haftegi":2.28,"mahaneh":4.4,"fasli":2.78,"sheshmah":1.96,"salaneh":3.37},"fundTypeName":"در سهام"},{"date":"2026-05-07","tarikh":"1405-02-17","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":35,"haftegi":45,"mahaneh":61,"fasli":30,"sheshmah":6,"salaneh":23},"values":{"roozaneh":-0.64,"haftegi":2.25,"mahaneh":4.56,"fasli":2.81,"sheshmah":1.94,"salaneh":3.18},"fundTypeName":"در سهام"},{"date":"2026-05-08","tarikh":"1405-02-18","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":34,"haftegi":44,"mahaneh":63,"fasli":31,"sheshmah":5,"salaneh":23},"values":{"roozaneh":-0.85,"haftegi":2.17,"mahaneh":4.67,"fasli":2.72,"sheshmah":1.96,"salaneh":3.1},"fundTypeName":"در سهام"},{"date":"2026-05-09","tarikh":"1405-02-19","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":29,"haftegi":45,"mahaneh":63,"fasli":32,"sheshmah":5,"salaneh":23},"values":{"roozaneh":-0.9,"haftegi":2.02,"mahaneh":4.54,"fasli":2.73,"sheshmah":1.98,"salaneh":3.17},"fundTypeName":"در سهام"},{"date":"2026-05-10","tarikh":"1405-02-20","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":27,"haftegi":47,"mahaneh":63,"fasli":33,"sheshmah":5,"salaneh":22},"values":{"roozaneh":-1.01,"haftegi":1.89,"mahaneh":4.39,"fasli":2.8,"sheshmah":1.93,"salaneh":3.01},"fundTypeName":"در سهام"},{"date":"2026-05-11","tarikh":"1405-02-21","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":26,"haftegi":48,"mahaneh":64,"fasli":33,"sheshmah":6,"salaneh":23},"values":{"roozaneh":-1.07,"haftegi":1.95,"mahaneh":4.47,"fasli":2.81,"sheshmah":1.94,"salaneh":2.88},"fundTypeName":"در سهام"},{"date":"2026-05-12","tarikh":"1405-02-22","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":28,"haftegi":48,"mahaneh":65,"fasli":34,"sheshmah":6,"salaneh":23},"values":{"roozaneh":-1,"haftegi":1.87,"mahaneh":4.49,"fasli":2.92,"sheshmah":1.78,"salaneh":2.79},"fundTypeName":"در سهام"},{"date":"2026-05-13","tarikh":"1405-02-23","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":26,"haftegi":45,"mahaneh":64,"fasli":34,"sheshmah":5,"salaneh":24},"values":{"roozaneh":-1.18,"haftegi":2.01,"mahaneh":4.55,"fasli":2.78,"sheshmah":1.94,"salaneh":2.71},"fundTypeName":"در سهام"},{"date":"2026-05-14","tarikh":"1405-02-24","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":30,"haftegi":47,"mahaneh":62,"fasli":32,"sheshmah":4,"salaneh":24},"values":{"roozaneh":-1.18,"haftegi":2.22,"mahaneh":4.56,"fasli":2.85,"sheshmah":1.95,"salaneh":2.78},"fundTypeName":"در سهام"},{"date":"2026-05-15","tarikh":"1405-02-25","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":32,"haftegi":49,"mahaneh":63,"fasli":31,"sheshmah":4,"salaneh":22},"values":{"roozaneh":-0.71,"haftegi":2.34,"mahaneh":4.37,"fasli":2.79,"sheshmah":2.09,"salaneh":2.78},"fundTypeName":"در سهام"},{"date":"2026-05-16","tarikh":"1405-02-26","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":30,"haftegi":50,"mahaneh":62,"fasli":30,"sheshmah":5,"salaneh":23},"values":{"roozaneh":-1.01,"haftegi":2.15,"mahaneh":4.47,"fasli":2.91,"sheshmah":2.1,"salaneh":3.03},"fundTypeName":"در سهام"},{"date":"2026-05-17","tarikh":"1405-02-27","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":34,"haftegi":49,"mahaneh":63,"fasli":31,"sheshmah":4,"salaneh":22},"values":{"roozaneh":-1.02,"haftegi":2.28,"mahaneh":4.28,"fasli":2.91,"sheshmah":1.91,"salaneh":3.01},"fundTypeName":"در سهام"},{"date":"2026-05-18","tarikh":"1405-02-28","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":31,"haftegi":51,"mahaneh":64,"fasli":31,"sheshmah":5,"salaneh":22},"values":{"roozaneh":-1.15,"haftegi":2.24,"mahaneh":4.44,"fasli":3.11,"sheshmah":1.8,"salaneh":3.1},"fundTypeName":"در سهام"},{"date":"2026-05-19","tarikh":"1405-02-29","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":32,"haftegi":49,"mahaneh":63,"fasli":30,"sheshmah":6,"salaneh":23},"values":{"roozaneh":-1.4,"haftegi":2.23,"mahaneh":4.29,"fasli":3.07,"sheshmah":1.69,"salaneh":3.09},"fundTypeName":"در سهام"},{"date":"2026-05-20","tarikh":"1405-02-30","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":29,"haftegi":49,"mahaneh":63,"fasli":31,"sheshmah":7,"salaneh":22},"values":{"roozaneh":-1.16,"haftegi":2.05,"mahaneh":4.13,"fasli":3.22,"sheshmah":1.62,"salaneh":3.18},"fundTypeName":"در سهام"},{"date":"2026-05-21","tarikh":"1405-02-31","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":30,"haftegi":50,"mahaneh":64,"fasli":30,"sheshmah":8,"salaneh":23},"values":{"roozaneh":-0.73,"haftegi":2.19,"mahaneh":4.2,"fasli":3.06,"sheshmah":1.54,"salaneh":3.08},"fundTypeName":"در سهام"},{"date":"2026-05-22","tarikh":"1405-03-01","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":34,"haftegi":47,"mahaneh":63,"fasli":29,"sheshmah":7,"salaneh":22},"values":{"roozaneh":-0.78,"haftegi":2.31,"mahaneh":4.39,"fasli":2.9,"sheshmah":1.41,"salaneh":3.19},"fundTypeName":"در سهام"},{"date":"2026-05-23","tarikh":"1405-03-02","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":30,"haftegi":48,"mahaneh":62,"fasli":28,"sheshmah":7,"salaneh":21},"values":{"roozaneh":-1.06,"haftegi":2.15,"mahaneh":4.23,"fasli":2.94,"sheshmah":1.56,"salaneh":3.11},"fundTypeName":"در سهام"},{"date":"2026-05-24","tarikh":"1405-03-03","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":28,"haftegi":46,"mahaneh":62,"fasli":27,"sheshmah":6,"salaneh":20},"values":{"roozaneh":-1.12,"haftegi":2.25,"mahaneh":4.39,"fasli":2.87,"sheshmah":1.42,"salaneh":3.22},"fundTypeName":"در سهام"},{"date":"2026-05-25","tarikh":"1405-03-04","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":31,"haftegi":48,"mahaneh":63,"fasli":27,"sheshmah":7,"salaneh":20},"values":{"roozaneh":-1.22,"haftegi":2.33,"mahaneh":4.51,"fasli":3.01,"sheshmah":1.34,"salaneh":3.07},"fundTypeName":"در سهام"},{"date":"2026-05-26","tarikh":"1405-03-05","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":29,"haftegi":47,"mahaneh":63,"fasli":28,"sheshmah":8,"salaneh":20},"values":{"roozaneh":-1.07,"haftegi":2.2,"mahaneh":4.54,"fasli":2.92,"sheshmah":1.59,"salaneh":3.23},"fundTypeName":"در سهام"},{"date":"2026-05-27","tarikh":"1405-03-06","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":28,"haftegi":46,"mahaneh":63,"fasli":29,"sheshmah":8,"salaneh":20},"values":{"roozaneh":-1.18,"haftegi":2.24,"mahaneh":4.47,"fasli":3.12,"sheshmah":1.68,"salaneh":3.14},"fundTypeName":"در سهام"},{"date":"2026-05-28","tarikh":"1405-03-07","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":30,"haftegi":47,"mahaneh":63,"fasli":30,"sheshmah":9,"salaneh":21},"values":{"roozaneh":-1.16,"haftegi":2.3,"mahaneh":4.63,"fasli":3.22,"sheshmah":1.52,"salaneh":3.14},"fundTypeName":"در سهام"},{"date":"2026-05-29","tarikh":"1405-03-08","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":27,"haftegi":48,"mahaneh":63,"fasli":30,"sheshmah":8,"salaneh":20},"values":{"roozaneh":-0.73,"haftegi":2.49,"mahaneh":4.7,"fasli":3.14,"sheshmah":1.55,"salaneh":3.02},"fundTypeName":"در سهام"},{"date":"2026-05-30","tarikh":"1405-03-09","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":31,"haftegi":49,"mahaneh":62,"fasli":31,"sheshmah":8,"salaneh":21},"values":{"roozaneh":-0.91,"haftegi":2.31,"mahaneh":4.55,"fasli":3.07,"sheshmah":1.49,"salaneh":3.06},"fundTypeName":"در سهام"},{"date":"2026-05-31","tarikh":"1405-03-10","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":32,"haftegi":49,"mahaneh":62,"fasli":31,"sheshmah":8,"salaneh":20},"values":{"roozaneh":-1.13,"haftegi":2.49,"mahaneh":4.36,"fasli":3.24,"sheshmah":1.35,"salaneh":3.29},"fundTypeName":"در سهام"},{"date":"2026-06-01","tarikh":"1405-03-11","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":28,"haftegi":49,"mahaneh":63,"fasli":31,"sheshmah":8,"salaneh":19},"values":{"roozaneh":-0.84,"haftegi":2.49,"mahaneh":4.47,"fasli":3.35,"sheshmah":1.3,"salaneh":3.18},"fundTypeName":"در سهام"},{"date":"2026-06-02","tarikh":"1405-03-12","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":31,"haftegi":46,"mahaneh":64,"fasli":30,"sheshmah":8,"salaneh":20},"values":{"roozaneh":-1.15,"haftegi":2.61,"mahaneh":4.29,"fasli":3.18,"sheshmah":1.3,"salaneh":3.32},"fundTypeName":"در سهام"},{"date":"2026-06-03","tarikh":"1405-03-13","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":31,"haftegi":44,"mahaneh":64,"fasli":30,"sheshmah":6,"salaneh":20},"values":{"roozaneh":-1.18,"haftegi":2.39,"mahaneh":4.24,"fasli":2.98,"sheshmah":1.37,"salaneh":3.31},"fundTypeName":"در سهام"},{"date":"2026-06-04","tarikh":"1405-03-14","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":30,"haftegi":42,"mahaneh":65,"fasli":29,"sheshmah":5,"salaneh":20},"values":{"roozaneh":-1.18,"haftegi":2.26,"mahaneh":4.35,"fasli":3.04,"sheshmah":1.39,"salaneh":3.43},"fundTypeName":"در سهام"},{"date":"2026-06-05","tarikh":"1405-03-15","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":27,"haftegi":40,"mahaneh":63,"fasli":29,"sheshmah":7,"salaneh":20},"values":{"roozaneh":-1.06,"haftegi":2.23,"mahaneh":4.35,"fasli":2.86,"sheshmah":1.43,"salaneh":3.63},"fundTypeName":"در سهام"},{"date":"2026-06-06","tarikh":"1405-03-16","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":30,"haftegi":43,"mahaneh":64,"fasli":28,"sheshmah":6,"salaneh":21},"values":{"roozaneh":-0.57,"haftegi":2.13,"mahaneh":4.27,"fasli":2.88,"sheshmah":1.34,"salaneh":3.49},"fundTypeName":"در سهام"},{"date":"2026-06-07","tarikh":"1405-03-17","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":26,"haftegi":43,"mahaneh":64,"fasli":30,"sheshmah":7,"salaneh":20},"values":{"roozaneh":-0.25,"haftegi":2.05,"mahaneh":4.2,"fasli":2.97,"sheshmah":1.53,"salaneh":3.4},"fundTypeName":"در سهام"},{"date":"2026-06-08","tarikh":"1405-03-18","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":28,"haftegi":44,"mahaneh":62,"fasli":30,"sheshmah":8,"salaneh":19},"values":{"roozaneh":-0.48,"haftegi":1.99,"mahaneh":4.11,"fasli":2.79,"sheshmah":1.56,"salaneh":3.35},"fundTypeName":"در سهام"},{"date":"2026-06-09","tarikh":"1405-03-19","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":29,"haftegi":44,"mahaneh":63,"fasli":31,"sheshmah":8,"salaneh":20},"values":{"roozaneh":-0.08,"haftegi":1.99,"mahaneh":4.3,"fasli":2.62,"sheshmah":1.49,"salaneh":3.18},"fundTypeName":"در سهام"},{"date":"2026-06-10","tarikh":"1405-03-20","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":27,"haftegi":44,"mahaneh":63,"fasli":30,"sheshmah":9,"salaneh":21},"values":{"roozaneh":-0.17,"haftegi":2.17,"mahaneh":4.28,"fasli":2.56,"sheshmah":1.46,"salaneh":3.32},"fundTypeName":"در سهام"},{"date":"2026-06-11","tarikh":"1405-03-21","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":30,"haftegi":43,"mahaneh":63,"fasli":29,"sheshmah":10,"salaneh":21},"values":{"roozaneh":0.24,"haftegi":2.08,"mahaneh":4.14,"fasli":2.46,"sheshmah":1.58,"salaneh":3.33},"fundTypeName":"در سهام"},{"date":"2026-06-12","tarikh":"1405-03-22","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":30,"haftegi":44,"mahaneh":64,"fasli":29,"sheshmah":10,"salaneh":20},"values":{"roozaneh":0.14,"haftegi":1.92,"mahaneh":4.19,"fasli":2.36,"sheshmah":1.57,"salaneh":3.23},"fundTypeName":"در سهام"},{"date":"2026-06-13","tarikh":"1405-03-23","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":32,"haftegi":43,"mahaneh":65,"fasli":30,"sheshmah":11,"salaneh":21},"values":{"roozaneh":-0.04,"haftegi":1.81,"mahaneh":4.33,"fasli":2.37,"sheshmah":1.72,"salaneh":3.24},"fundTypeName":"در سهام"},{"date":"2026-06-14","tarikh":"1405-03-24","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":33,"haftegi":42,"mahaneh":63,"fasli":31,"sheshmah":11,"salaneh":21},"values":{"roozaneh":-0.1,"haftegi":1.92,"mahaneh":4.5,"fasli":2.23,"sheshmah":1.68,"salaneh":3.1},"fundTypeName":"در سهام"},{"date":"2026-06-15","tarikh":"1405-03-25","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":35,"haftegi":40,"mahaneh":64,"fasli":30,"sheshmah":10,"salaneh":22},"values":{"roozaneh":-0.45,"haftegi":1.85,"mahaneh":4.63,"fasli":2.34,"sheshmah":1.69,"salaneh":3.06},"fundTypeName":"در سهام"},{"date":"2026-06-16","tarikh":"1405-03-26","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":31,"haftegi":43,"mahaneh":65,"fasli":30,"sheshmah":9,"salaneh":21},"values":{"roozaneh":-0.13,"haftegi":2.08,"mahaneh":4.67,"fasli":2.24,"sheshmah":1.73,"salaneh":3.1},"fundTypeName":"در سهام"},{"date":"2026-06-17","tarikh":"1405-03-27","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":27,"haftegi":42,"mahaneh":65,"fasli":29,"sheshmah":9,"salaneh":20},"values":{"roozaneh":-0.07,"haftegi":2.28,"mahaneh":4.84,"fasli":2.32,"sheshmah":1.78,"salaneh":3.32},"fundTypeName":"در سهام"},{"date":"2026-06-18","tarikh":"1405-03-28","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":29,"haftegi":44,"mahaneh":64,"fasli":30,"sheshmah":8,"salaneh":21},"values":{"roozaneh":-0.18,"haftegi":2.23,"mahaneh":4.84,"fasli":2.24,"sheshmah":1.97,"salaneh":3.16},"fundTypeName":"در سهام"},{"date":"2026-06-19","tarikh":"1405-03-29","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":33,"haftegi":43,"mahaneh":62,"fasli":29,"sheshmah":8,"salaneh":20},"values":{"roozaneh":-0.35,"haftegi":2.34,"mahaneh":4.7,"fasli":2.32,"sheshmah":2,"salaneh":3.03},"fundTypeName":"در سهام"},{"date":"2026-06-20","tarikh":"1405-03-30","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":35,"haftegi":45,"mahaneh":63,"fasli":30,"sheshmah":8,"salaneh":21},"values":{"roozaneh":-0.01,"haftegi":2.53,"mahaneh":4.88,"fasli":2.57,"sheshmah":1.86,"salaneh":3.18},"fundTypeName":"در سهام"},{"date":"2026-06-21","tarikh":"1405-03-31","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":37,"haftegi":46,"mahaneh":64,"fasli":30,"sheshmah":9,"salaneh":20},"values":{"roozaneh":0.35,"haftegi":2.68,"mahaneh":4.79,"fasli":2.79,"sheshmah":1.74,"salaneh":3.22},"fundTypeName":"در سهام"},{"date":"2026-06-22","tarikh":"1405-04-01","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":35,"haftegi":47,"mahaneh":64,"fasli":31,"sheshmah":8,"salaneh":19},"values":{"roozaneh":0.07,"haftegi":2.75,"mahaneh":4.57,"fasli":2.77,"sheshmah":1.86,"salaneh":3.22},"fundTypeName":"در سهام"},{"date":"2026-06-23","tarikh":"1405-04-02","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":31,"haftegi":45,"mahaneh":64,"fasli":30,"sheshmah":8,"salaneh":19},"values":{"roozaneh":-0.14,"haftegi":2.53,"mahaneh":4.62,"fasli":2.74,"sheshmah":1.74,"salaneh":3.2},"fundTypeName":"در سهام"},{"date":"2026-06-24","tarikh":"1405-04-03","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":28,"haftegi":45,"mahaneh":63,"fasli":30,"sheshmah":9,"salaneh":21},"values":{"roozaneh":0.04,"haftegi":2.47,"mahaneh":4.65,"fasli":2.61,"sheshmah":1.64,"salaneh":3.32},"fundTypeName":"در سهام"},{"date":"2026-06-25","tarikh":"1405-04-04","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":29,"haftegi":43,"mahaneh":62,"fasli":29,"sheshmah":9,"salaneh":22},"values":{"roozaneh":0.03,"haftegi":2.42,"mahaneh":4.54,"fasli":2.79,"sheshmah":1.54,"salaneh":3.34},"fundTypeName":"در سهام"},{"date":"2026-06-26","tarikh":"1405-04-05","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":29,"haftegi":41,"mahaneh":62,"fasli":29,"sheshmah":8,"salaneh":23},"values":{"roozaneh":-0.11,"haftegi":2.5,"mahaneh":4.72,"fasli":2.89,"sheshmah":1.52,"salaneh":3.42},"fundTypeName":"در سهام"},{"date":"2026-06-27","tarikh":"1405-04-06","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":30,"haftegi":42,"mahaneh":63,"fasli":29,"sheshmah":8,"salaneh":24},"values":{"roozaneh":-0.42,"haftegi":2.6,"mahaneh":4.61,"fasli":3.04,"sheshmah":1.7,"salaneh":3.55},"fundTypeName":"در سهام"},{"date":"2026-06-28","tarikh":"1405-04-07","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":29,"haftegi":44,"mahaneh":62,"fasli":30,"sheshmah":8,"salaneh":23},"values":{"roozaneh":-0.07,"haftegi":2.69,"mahaneh":4.42,"fasli":2.84,"sheshmah":1.58,"salaneh":3.53},"fundTypeName":"در سهام"},{"date":"2026-06-29","tarikh":"1405-04-08","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":32,"haftegi":42,"mahaneh":61,"fasli":31,"sheshmah":9,"salaneh":24},"values":{"roozaneh":0.04,"haftegi":2.65,"mahaneh":4.41,"fasli":2.99,"sheshmah":1.53,"salaneh":3.6},"fundTypeName":"در سهام"},{"date":"2026-06-30","tarikh":"1405-04-09","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":32,"haftegi":42,"mahaneh":62,"fasli":30,"sheshmah":9,"salaneh":23},"values":{"roozaneh":-0.28,"haftegi":2.5,"mahaneh":4.37,"fasli":3.08,"sheshmah":1.74,"salaneh":3.59},"fundTypeName":"در سهام"},{"date":"2026-07-01","tarikh":"1405-04-10","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":33,"haftegi":40,"mahaneh":63,"fasli":30,"sheshmah":8,"salaneh":24},"values":{"roozaneh":-0.21,"haftegi":2.3,"mahaneh":4.25,"fasli":3.07,"sheshmah":1.64,"salaneh":3.71},"fundTypeName":"در سهام"},{"date":"2026-07-02","tarikh":"1405-04-11","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":31,"haftegi":43,"mahaneh":62,"fasli":29,"sheshmah":9,"salaneh":25},"values":{"roozaneh":-0.29,"haftegi":2.43,"mahaneh":4.42,"fasli":3.26,"sheshmah":1.55,"salaneh":3.83},"fundTypeName":"در سهام"},{"date":"2026-07-03","tarikh":"1405-04-12","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":35,"haftegi":41,"mahaneh":63,"fasli":30,"sheshmah":9,"salaneh":23},"values":{"roozaneh":-0.55,"haftegi":2.47,"mahaneh":4.51,"fasli":3.36,"sheshmah":1.77,"salaneh":3.86},"fundTypeName":"در سهام"},{"date":"2026-07-04","tarikh":"1405-04-13","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":35,"haftegi":42,"mahaneh":62,"fasli":30,"sheshmah":9,"salaneh":22},"values":{"roozaneh":-0.61,"haftegi":2.56,"mahaneh":4.43,"fasli":3.27,"sheshmah":1.68,"salaneh":3.66},"fundTypeName":"در سهام"},{"date":"2026-07-05","tarikh":"1405-04-14","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":35,"haftegi":42,"mahaneh":61,"fasli":30,"sheshmah":8,"salaneh":21},"values":{"roozaneh":-0.69,"haftegi":2.48,"mahaneh":4.27,"fasli":3.27,"sheshmah":1.81,"salaneh":3.65},"fundTypeName":"در سهام"},{"date":"2026-07-06","tarikh":"1405-04-15","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":37,"haftegi":40,"mahaneh":60,"fasli":31,"sheshmah":9,"salaneh":22},"values":{"roozaneh":-0.58,"haftegi":2.33,"mahaneh":4.3,"fasli":3.18,"sheshmah":1.88,"salaneh":3.49},"fundTypeName":"در سهام"},{"date":"2026-07-07","tarikh":"1405-04-16","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":39,"haftegi":40,"mahaneh":61,"fasli":30,"sheshmah":8,"salaneh":23},"values":{"roozaneh":-0.38,"haftegi":2.51,"mahaneh":4.46,"fasli":3.1,"sheshmah":1.78,"salaneh":3.56},"fundTypeName":"در سهام"},{"date":"2026-07-08","tarikh":"1405-04-17","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":40,"haftegi":42,"mahaneh":61,"fasli":31,"sheshmah":7,"salaneh":24},"values":{"roozaneh":-0.59,"haftegi":2.63,"mahaneh":4.42,"fasli":3.09,"sheshmah":1.65,"salaneh":3.44},"fundTypeName":"در سهام"},{"date":"2026-07-09","tarikh":"1405-04-18","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":36,"haftegi":44,"mahaneh":60,"fasli":30,"sheshmah":7,"salaneh":23},"values":{"roozaneh":-0.23,"haftegi":2.44,"mahaneh":4.44,"fasli":3.12,"sheshmah":1.66,"salaneh":3.56},"fundTypeName":"در سهام"},{"date":"2026-07-10","tarikh":"1405-04-19","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":33,"haftegi":45,"mahaneh":60,"fasli":29,"sheshmah":8,"salaneh":23},"values":{"roozaneh":0.1,"haftegi":2.54,"mahaneh":4.6,"fasli":3,"sheshmah":1.62,"salaneh":3.68},"fundTypeName":"در سهام"},{"date":"2026-07-11","tarikh":"1405-04-20","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":34,"haftegi":46,"mahaneh":61,"fasli":30,"sheshmah":8,"salaneh":24},"values":{"roozaneh":-0.21,"haftegi":2.7,"mahaneh":4.64,"fasli":3.06,"sheshmah":1.63,"salaneh":3.61},"fundTypeName":"در سهام"},{"date":"2026-07-12","tarikh":"1405-04-21","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":36,"haftegi":47,"mahaneh":62,"fasli":31,"sheshmah":8,"salaneh":22},"values":{"roozaneh":-0.13,"haftegi":2.84,"mahaneh":4.76,"fasli":3.15,"sheshmah":1.48,"salaneh":3.6},"fundTypeName":"در سهام"},{"date":"2026-07-13","tarikh":"1405-04-22","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":32,"haftegi":49,"mahaneh":62,"fasli":30,"sheshmah":7,"salaneh":21},"values":{"roozaneh":-0.13,"haftegi":2.9,"mahaneh":4.61,"fasli":3.11,"sheshmah":1.55,"salaneh":3.67},"fundTypeName":"در سهام"},{"date":"2026-07-14","tarikh":"1405-04-23","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":35,"haftegi":48,"mahaneh":63,"fasli":30,"sheshmah":7,"salaneh":21},"values":{"roozaneh":-0.01,"haftegi":2.75,"mahaneh":4.53,"fasli":3.19,"sheshmah":1.42,"salaneh":3.72},"fundTypeName":"در سهام"},{"date":"2026-07-15","tarikh":"1405-04-24","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":35,"haftegi":50,"mahaneh":62,"fasli":31,"sheshmah":8,"salaneh":22},"values":{"roozaneh":-0.39,"haftegi":2.83,"mahaneh":4.39,"fasli":3.24,"sheshmah":1.59,"salaneh":3.67},"fundTypeName":"در سهام"},{"date":"2026-07-16","tarikh":"1405-04-25","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":34,"haftegi":50,"mahaneh":61,"fasli":32,"sheshmah":8,"salaneh":22},"values":{"roozaneh":-0.2,"haftegi":2.76,"mahaneh":4.31,"fasli":3.07,"sheshmah":1.52,"salaneh":3.74},"fundTypeName":"در سهام"},{"date":"2026-07-17","tarikh":"1405-04-26","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":34,"haftegi":51,"mahaneh":62,"fasli":32,"sheshmah":8,"salaneh":22},"values":{"roozaneh":-0.25,"haftegi":2.86,"mahaneh":4.46,"fasli":3.17,"sheshmah":1.69,"salaneh":3.82},"fundTypeName":"در سهام"},{"date":"2026-07-18","tarikh":"1405-04-27","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":35,"haftegi":53,"mahaneh":62,"fasli":33,"sheshmah":9,"salaneh":21},"values":{"roozaneh":-0.13,"haftegi":2.68,"mahaneh":4.38,"fasli":3.32,"sheshmah":1.65,"salaneh":3.69},"fundTypeName":"در سهام"},{"date":"2026-07-19","tarikh":"1405-04-28","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":35,"haftegi":52,"mahaneh":62,"fasli":33,"sheshmah":10,"salaneh":21},"values":{"roozaneh":0.17,"haftegi":2.67,"mahaneh":4.22,"fasli":3.43,"sheshmah":1.74,"salaneh":3.77},"fundTypeName":"در سهام"},{"date":"2026-07-20","tarikh":"1405-04-29","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":35,"haftegi":51,"mahaneh":61,"fasli":33,"sheshmah":9,"salaneh":21},"values":{"roozaneh":0.28,"haftegi":2.62,"mahaneh":4.09,"fasli":3.2,"sheshmah":1.88,"salaneh":3.7},"fundTypeName":"در سهام"},{"date":"2026-07-21","tarikh":"1405-04-30","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":36,"haftegi":52,"mahaneh":60,"fasli":33,"sheshmah":7,"salaneh":22},"values":{"roozaneh":0.34,"haftegi":2.59,"mahaneh":3.97,"fasli":3.36,"sheshmah":1.92,"salaneh":3.55},"fundTypeName":"در سهام"},{"date":"2026-07-22","tarikh":"1405-04-31","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":32,"haftegi":49,"mahaneh":59,"fasli":34,"sheshmah":8,"salaneh":22},"values":{"roozaneh":0.45,"haftegi":2.65,"mahaneh":4.1,"fasli":3.3,"sheshmah":1.81,"salaneh":3.53},"fundTypeName":"در سهام"},{"date":"2026-07-23","tarikh":"1405-05-01","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":35,"haftegi":47,"mahaneh":59,"fasli":32,"sheshmah":7,"salaneh":21},"values":{"roozaneh":0.79,"haftegi":2.53,"mahaneh":3.98,"fasli":3.39,"sheshmah":1.68,"salaneh":3.72},"fundTypeName":"در سهام"},{"date":"2026-07-24","tarikh":"1405-05-02","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":32,"haftegi":47,"mahaneh":58,"fasli":33,"sheshmah":7,"salaneh":21},"values":{"roozaneh":0.54,"haftegi":2.59,"mahaneh":4.13,"fasli":3.32,"sheshmah":1.72,"salaneh":3.7},"fundTypeName":"در سهام"},{"date":"2026-07-25","tarikh":"1405-05-03","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":32,"haftegi":47,"mahaneh":57,"fasli":34,"sheshmah":6,"salaneh":21},"values":{"roozaneh":0.5,"haftegi":2.44,"mahaneh":4.3,"fasli":3.25,"sheshmah":1.91,"salaneh":3.54},"fundTypeName":"در سهام"},{"date":"2026-07-26","tarikh":"1405-05-04","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":30,"haftegi":46,"mahaneh":58,"fasli":35,"sheshmah":6,"salaneh":20},"values":{"roozaneh":0.81,"haftegi":2.35,"mahaneh":4.19,"fasli":3.21,"sheshmah":1.98,"salaneh":3.59},"fundTypeName":"در سهام"},{"date":"2026-07-27","tarikh":"1405-05-05","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":30,"haftegi":46,"mahaneh":58,"fasli":33,"sheshmah":6,"salaneh":20},"values":{"roozaneh":1,"haftegi":2.28,"mahaneh":4.04,"fasli":3.09,"sheshmah":1.9,"salaneh":3.58},"fundTypeName":"در سهام"},{"date":"2026-07-28","tarikh":"1405-05-06","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":30,"haftegi":47,"mahaneh":60,"fasli":33,"sheshmah":5,"salaneh":19},"values":{"roozaneh":0.9,"haftegi":2.31,"mahaneh":4.16,"fasli":3.11,"sheshmah":1.85,"salaneh":3.6},"fundTypeName":"در سهام"},{"date":"2026-07-29","tarikh":"1405-05-07","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":33,"haftegi":44,"mahaneh":61,"fasli":32,"sheshmah":4,"salaneh":20},"values":{"roozaneh":0.55,"haftegi":2.35,"mahaneh":4.18,"fasli":2.97,"sheshmah":1.99,"salaneh":3.47},"fundTypeName":"در سهام"},{"date":"2026-07-30","tarikh":"1405-05-08","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":30,"haftegi":46,"mahaneh":61,"fasli":31,"sheshmah":4,"salaneh":19},"values":{"roozaneh":0.69,"haftegi":2.21,"mahaneh":4.12,"fasli":2.94,"sheshmah":1.94,"salaneh":3.64},"fundTypeName":"در سهام"},{"date":"2026-07-31","tarikh":"1405-05-09","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":30,"haftegi":44,"mahaneh":62,"fasli":32,"sheshmah":4,"salaneh":21},"values":{"roozaneh":0.64,"haftegi":2.2,"mahaneh":4.08,"fasli":2.83,"sheshmah":2.01,"salaneh":3.74},"fundTypeName":"در سهام"},{"date":"2026-08-01","tarikh":"1405-05-10","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":31,"haftegi":45,"mahaneh":63,"fasli":33,"sheshmah":5,"salaneh":20},"values":{"roozaneh":0.95,"haftegi":2.4,"mahaneh":4.14,"fasli":2.81,"sheshmah":2.19,"salaneh":3.9},"fundTypeName":"در سهام"},{"date":"2026-08-02","tarikh":"1405-05-11","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":34,"haftegi":46,"mahaneh":62,"fasli":32,"sheshmah":6,"salaneh":19},"values":{"roozaneh":0.79,"haftegi":2.39,"mahaneh":4.29,"fasli":2.87,"sheshmah":2.07,"salaneh":3.97},"fundTypeName":"در سهام"},{"date":"2026-08-03","tarikh":"1405-05-12","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":31,"haftegi":48,"mahaneh":63,"fasli":32,"sheshmah":6,"salaneh":21},"values":{"roozaneh":0.4,"haftegi":2.43,"mahaneh":4.28,"fasli":2.83,"sheshmah":1.95,"salaneh":3.97},"fundTypeName":"در سهام"},{"date":"2026-08-04","tarikh":"1405-05-13","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":30,"haftegi":48,"mahaneh":63,"fasli":30,"sheshmah":7,"salaneh":20},"values":{"roozaneh":0.2,"haftegi":2.5,"mahaneh":4.28,"fasli":2.84,"sheshmah":1.77,"salaneh":3.77},"fundTypeName":"در سهام"},{"date":"2026-08-05","tarikh":"1405-05-14","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":26,"haftegi":50,"mahaneh":61,"fasli":31,"sheshmah":6,"salaneh":20},"values":{"roozaneh":0.4,"haftegi":2.62,"mahaneh":4.17,"fasli":2.95,"sheshmah":1.69,"salaneh":3.91},"fundTypeName":"در سهام"},{"date":"2026-08-06","tarikh":"1405-05-15","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":27,"haftegi":48,"mahaneh":62,"fasli":32,"sheshmah":5,"salaneh":22},"values":{"roozaneh":0.37,"haftegi":2.4,"mahaneh":4.1,"fasli":3.11,"sheshmah":1.53,"salaneh":3.75},"fundTypeName":"در سهام"},{"date":"2026-08-07","tarikh":"1405-05-16","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":29,"haftegi":48,"mahaneh":61,"fasli":33,"sheshmah":5,"salaneh":22},"values":{"roozaneh":0.57,"haftegi":2.36,"mahaneh":4.25,"fasli":3.15,"sheshmah":1.44,"salaneh":3.57},"fundTypeName":"در سهام"},{"date":"2026-08-08","tarikh":"1405-05-17","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":32,"haftegi":47,"mahaneh":61,"fasli":33,"sheshmah":5,"salaneh":21},"values":{"roozaneh":0.62,"haftegi":2.33,"mahaneh":4.43,"fasli":3,"sheshmah":1.49,"salaneh":3.65},"fundTypeName":"در سهام"},{"date":"2026-08-09","tarikh":"1405-05-18","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":34,"haftegi":47,"mahaneh":60,"fasli":32,"sheshmah":5,"salaneh":21},"values":{"roozaneh":0.27,"haftegi":2.39,"mahaneh":4.24,"fasli":3.15,"sheshmah":1.66,"salaneh":3.73},"fundTypeName":"در سهام"},{"date":"2026-08-10","tarikh":"1405-05-19","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":31,"haftegi":47,"mahaneh":61,"fasli":32,"sheshmah":6,"salaneh":22},"values":{"roozaneh":0.25,"haftegi":2.22,"mahaneh":4.18,"fasli":3.22,"sheshmah":1.75,"salaneh":3.83},"fundTypeName":"در سهام"},{"date":"2026-08-11","tarikh":"1405-05-20","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":32,"haftegi":46,"mahaneh":62,"fasli":31,"sheshmah":6,"salaneh":21},"values":{"roozaneh":0.15,"haftegi":2.2,"mahaneh":4.14,"fasli":3.22,"sheshmah":1.9,"salaneh":3.6},"fundTypeName":"در سهام"},{"date":"2026-08-12","tarikh":"1405-05-21","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":36,"haftegi":45,"mahaneh":61,"fasli":30,"sheshmah":6,"salaneh":22},"values":{"roozaneh":0.4,"haftegi":2.18,"mahaneh":4.3,"fasli":3.15,"sheshmah":2.01,"salaneh":3.77},"fundTypeName":"در سهام"},{"date":"2026-08-13","tarikh":"1405-05-22","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":37,"haftegi":47,"mahaneh":62,"fasli":29,"sheshmah":7,"salaneh":21},"values":{"roozaneh":0.41,"haftegi":2.27,"mahaneh":4.21,"fasli":3.33,"sheshmah":1.96,"salaneh":3.79},"fundTypeName":"در سهام"},{"date":"2026-08-14","tarikh":"1405-05-23","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":36,"haftegi":48,"mahaneh":62,"fasli":30,"sheshmah":7,"salaneh":20},"values":{"roozaneh":0.59,"haftegi":2.29,"mahaneh":4.07,"fasli":3.31,"sheshmah":1.83,"salaneh":3.76},"fundTypeName":"در سهام"},{"date":"2026-08-15","tarikh":"1405-05-24","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":33,"haftegi":50,"mahaneh":61,"fasli":31,"sheshmah":6,"salaneh":21},"values":{"roozaneh":0.58,"haftegi":2.15,"mahaneh":4.07,"fasli":3.38,"sheshmah":1.99,"salaneh":3.66},"fundTypeName":"در سهام"},{"date":"2026-08-16","tarikh":"1405-05-25","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":34,"haftegi":48,"mahaneh":61,"fasli":30,"sheshmah":5,"salaneh":20},"values":{"roozaneh":0.69,"haftegi":2.27,"mahaneh":4.01,"fasli":3.14,"sheshmah":2.01,"salaneh":3.7},"fundTypeName":"در سهام"},{"date":"2026-08-17","tarikh":"1405-05-26","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":31,"haftegi":49,"mahaneh":61,"fasli":30,"sheshmah":6,"salaneh":19},"values":{"roozaneh":0.28,"haftegi":2.23,"mahaneh":4.13,"fasli":3.01,"sheshmah":1.89,"salaneh":3.8},"fundTypeName":"در سهام"},{"date":"2026-08-18","tarikh":"1405-05-27","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":27,"haftegi":47,"mahaneh":60,"fasli":31,"sheshmah":7,"salaneh":20},"values":{"roozaneh":0.11,"haftegi":2.2,"mahaneh":4.25,"fasli":2.87,"sheshmah":1.76,"salaneh":3.96},"fundTypeName":"در سهام"},{"date":"2026-08-19","tarikh":"1405-05-28","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":31,"haftegi":45,"mahaneh":60,"fasli":31,"sheshmah":7,"salaneh":19},"values":{"roozaneh":0.07,"haftegi":2.32,"mahaneh":4.4,"fasli":2.81,"sheshmah":1.68,"salaneh":3.98},"fundTypeName":"در سهام"},{"date":"2026-08-20","tarikh":"1405-05-29","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":27,"haftegi":46,"mahaneh":59,"fasli":32,"sheshmah":7,"salaneh":19},"values":{"roozaneh":0.14,"haftegi":2.24,"mahaneh":4.36,"fasli":2.89,"sheshmah":1.56,"salaneh":4.07},"fundTypeName":"در سهام"},{"date":"2026-08-21","tarikh":"1405-05-30","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":24,"haftegi":45,"mahaneh":60,"fasli":31,"sheshmah":6,"salaneh":20},"values":{"roozaneh":-0.27,"haftegi":2.07,"mahaneh":4.19,"fasli":2.8,"sheshmah":1.76,"salaneh":3.85},"fundTypeName":"در سهام"},{"date":"2026-08-22","tarikh":"1405-05-31","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":23,"haftegi":43,"mahaneh":59,"fasli":30,"sheshmah":7,"salaneh":20},"values":{"roozaneh":-0.16,"haftegi":1.97,"mahaneh":4.12,"fasli":2.93,"sheshmah":1.97,"salaneh":3.85},"fundTypeName":"در سهام"},{"date":"2026-08-23","tarikh":"1405-06-01","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":25,"haftegi":43,"mahaneh":60,"fasli":29,"sheshmah":6,"salaneh":20},"values":{"roozaneh":-0.51,"haftegi":1.88,"mahaneh":4.3,"fasli":3.07,"sheshmah":1.91,"salaneh":3.68},"fundTypeName":"در سهام"},{"date":"2026-08-24","tarikh":"1405-06-02","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":27,"haftegi":42,"mahaneh":62,"fasli":29,"sheshmah":6,"salaneh":21},"values":{"roozaneh":-0.57,"haftegi":1.75,"mahaneh":4.31,"fasli":3.12,"sheshmah":1.73,"salaneh":3.56},"fundTypeName":"در سهام"},{"date":"2026-08-25","tarikh":"1405-06-03","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":31,"haftegi":44,"mahaneh":63,"fasli":28,"sheshmah":7,"salaneh":21},"values":{"roozaneh":-0.56,"haftegi":1.67,"mahaneh":4.47,"fasli":2.91,"sheshmah":1.81,"salaneh":3.71},"fundTypeName":"در سهام"},{"date":"2026-08-26","tarikh":"1405-06-04","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":28,"haftegi":46,"mahaneh":62,"fasli":27,"sheshmah":7,"salaneh":22},"values":{"roozaneh":-0.52,"haftegi":1.75,"mahaneh":4.52,"fasli":3.11,"sheshmah":1.72,"salaneh":3.67},"fundTypeName":"در سهام"},{"date":"2026-08-27","tarikh":"1405-06-05","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":26,"haftegi":47,"mahaneh":61,"fasli":28,"sheshmah":8,"salaneh":21},"values":{"roozaneh":-0.72,"haftegi":1.87,"mahaneh":4.67,"fasli":3.15,"sheshmah":1.64,"salaneh":3.6},"fundTypeName":"در سهام"},{"date":"2026-08-28","tarikh":"1405-06-06","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":29,"haftegi":47,"mahaneh":60,"fasli":29,"sheshmah":9,"salaneh":20},"values":{"roozaneh":-0.86,"haftegi":2,"mahaneh":4.61,"fasli":3.23,"sheshmah":1.64,"salaneh":3.65},"fundTypeName":"در سهام"},{"date":"2026-08-29","tarikh":"1405-06-07","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":32,"haftegi":46,"mahaneh":62,"fasli":29,"sheshmah":8,"salaneh":20},"values":{"roozaneh":-1.13,"haftegi":1.95,"mahaneh":4.5,"fasli":3.31,"sheshmah":1.53,"salaneh":3.74},"fundTypeName":"در سهام"},{"date":"2026-08-30","tarikh":"1405-06-08","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":35,"haftegi":47,"mahaneh":63,"fasli":30,"sheshmah":7,"salaneh":20},"values":{"roozaneh":-1.18,"haftegi":1.86,"mahaneh":4.46,"fasli":3.14,"sheshmah":1.78,"salaneh":3.85},"fundTypeName":"در سهام"},{"date":"2026-08-31","tarikh":"1405-06-09","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":36,"haftegi":46,"mahaneh":63,"fasli":30,"sheshmah":7,"salaneh":19},"values":{"roozaneh":-1.26,"haftegi":1.87,"mahaneh":4.37,"fasli":3.13,"sheshmah":1.88,"salaneh":3.99},"fundTypeName":"در سهام"},{"date":"2026-09-01","tarikh":"1405-06-10","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":39,"haftegi":48,"mahaneh":63,"fasli":29,"sheshmah":6,"salaneh":18},"values":{"roozaneh":-1.03,"haftegi":1.75,"mahaneh":4.29,"fasli":3.27,"sheshmah":1.84,"salaneh":3.93},"fundTypeName":"در سهام"},{"date":"2026-09-02","tarikh":"1405-06-11","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":38,"haftegi":49,"mahaneh":62,"fasli":30,"sheshmah":8,"salaneh":17},"values":{"roozaneh":-1,"haftegi":1.79,"mahaneh":4.42,"fasli":3.26,"sheshmah":1.91,"salaneh":3.81},"fundTypeName":"در سهام"},{"date":"2026-09-03","tarikh":"1405-06-12","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":38,"haftegi":50,"mahaneh":62,"fasli":29,"sheshmah":9,"salaneh":17},"values":{"roozaneh":-0.92,"haftegi":1.94,"mahaneh":4.51,"fasli":3.3,"sheshmah":1.88,"salaneh":3.68},"fundTypeName":"در سهام"},{"date":"2026-09-04","tarikh":"1405-06-13","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":37,"haftegi":50,"mahaneh":63,"fasli":28,"sheshmah":9,"salaneh":17},"values":{"roozaneh":-0.84,"haftegi":2.16,"mahaneh":4.41,"fasli":3.32,"sheshmah":1.83,"salaneh":3.85},"fundTypeName":"در سهام"},{"date":"2026-09-05","tarikh":"1405-06-14","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":38,"haftegi":50,"mahaneh":63,"fasli":29,"sheshmah":8,"salaneh":18},"values":{"roozaneh":-0.8,"haftegi":2.25,"mahaneh":4.24,"fasli":3.44,"sheshmah":1.91,"salaneh":3.84},"fundTypeName":"در سهام"},{"date":"2026-09-06","tarikh":"1405-06-15","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":34,"haftegi":51,"mahaneh":63,"fasli":29,"sheshmah":8,"salaneh":17},"values":{"roozaneh":-0.88,"haftegi":2.07,"mahaneh":4.27,"fasli":3.52,"sheshmah":1.98,"salaneh":3.84},"fundTypeName":"در سهام"},{"date":"2026-09-07","tarikh":"1405-06-16","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":35,"haftegi":48,"mahaneh":63,"fasli":29,"sheshmah":8,"salaneh":19},"values":{"roozaneh":-0.51,"haftegi":2.21,"mahaneh":4.46,"fasli":3.62,"sheshmah":2.02,"salaneh":3.79},"fundTypeName":"در سهام"},{"date":"2026-09-08","tarikh":"1405-06-17","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":33,"haftegi":46,"mahaneh":64,"fasli":28,"sheshmah":8,"salaneh":20},"values":{"roozaneh":-0.41,"haftegi":2.07,"mahaneh":4.43,"fasli":3.51,"sheshmah":2.09,"salaneh":3.57},"fundTypeName":"در سهام"},{"date":"2026-09-09","tarikh":"1405-06-18","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":32,"haftegi":44,"mahaneh":62,"fasli":30,"sheshmah":9,"salaneh":20},"values":{"roozaneh":-0.05,"haftegi":2.09,"mahaneh":4.61,"fasli":3.38,"sheshmah":2.26,"salaneh":3.37},"fundTypeName":"در سهام"},{"date":"2026-09-10","tarikh":"1405-06-19","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":29,"haftegi":43,"mahaneh":61,"fasli":30,"sheshmah":9,"salaneh":19},"values":{"roozaneh":-0.21,"haftegi":2.25,"mahaneh":4.67,"fasli":3.32,"sheshmah":2.27,"salaneh":3.47},"fundTypeName":"در سهام"},{"date":"2026-09-11","tarikh":"1405-06-20","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":26,"haftegi":45,"mahaneh":60,"fasli":29,"sheshmah":8,"salaneh":21},"values":{"roozaneh":-0.1,"haftegi":2.39,"mahaneh":4.74,"fasli":3.43,"sheshmah":2.22,"salaneh":3.55},"fundTypeName":"در سهام"},{"date":"2026-09-12","tarikh":"1405-06-21","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":23,"haftegi":47,"mahaneh":60,"fasli":30,"sheshmah":7,"salaneh":22},"values":{"roozaneh":-0.48,"haftegi":2.21,"mahaneh":4.83,"fasli":3.33,"sheshmah":2.36,"salaneh":3.45},"fundTypeName":"در سهام"},{"date":"2026-09-13","tarikh":"1405-06-22","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":29,"haftegi":45,"mahaneh":62,"fasli":30,"sheshmah":7,"salaneh":22},"values":{"roozaneh":0,"haftegi":2.31,"mahaneh":4.53,"fasli":2.99,"sheshmah":2.06,"salaneh":3.47},"fundTypeName":"در سهام"},{"date":"2026-09-14","tarikh":"1405-06-23","regNo":"10787","name":"مشترک نقش جهان","fundType":6,"peerGroupSize":69,"ranks":{"roozaneh":29,"haftegi":45,"mahaneh":62,"fasli":30,"sheshmah":7,"salaneh":22},"values":{"roozaneh":0,"haftegi":2.31,"mahaneh":4.53,"fasli":2.99,"sheshmah":2.06,"salaneh":3.47},"fundTypeName":"در سهام"}];
+  </script>
+
+  <script>
+    // ============ Persian helpers ============
+    const FA_DIGITS = ['۰','۱','۲','۳','۴','۵','۶','۷','۸','۹'];
+    function toFa(input) { return String(input).replace(/[0-9]/g, d => FA_DIGITS[+d]); }
+    function formatNumberFa(value, opts = {}) {
+      const { decimals = 0, withSign = false } = opts;
+      const fixed = Number(value).toFixed(decimals);
+      const [intPart, decPart] = fixed.split('.');
+      const withSep = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '٬');
+      let result = decPart ? `${withSep}٬${decPart}` : withSep;
+      if (withSign && value > 0) result = '+' + result;
+      return toFa(result);
+    }
+    function formatPercentFa(value, withSign = true) {
+      return formatNumberFa(value, { decimals: 2, withSign }) + '٪';
+    }
+    function rankToPercentile(rank, peerSize) {
+      if (!peerSize || peerSize <= 1) return 0;
+      const pct = ((peerSize - rank) / (peerSize - 1)) * 100;
+      return Math.max(0, Math.min(100, pct));
+    }
+    function percentileBucket(pct) {
+      if (pct >= 75) return { label: 'برتر', tone: 'top' };
+      if (pct >= 50) return { label: 'خوب', tone: 'good' };
+      if (pct >= 25) return { label: 'متوسط', tone: 'mid' };
+      if (pct >= 10) return { label: 'ضعیف', tone: 'low' };
+      return { label: 'پایین', tone: 'bottom' };
+    }
+    const JALALI_MONTHS = ['فروردین','اردیبهشت','خرداد','تیر','مرداد','شهریور','مهر','آبان','آذر','دی','بهمن','اسفند'];
+    function formatJalaliFa(tarikh) {
+      const parts = tarikh.split('-');
+      if (parts.length !== 3) return toFa(tarikh);
+      const [y, m, d] = parts.map(Number);
+      const monthName = JALALI_MONTHS[m - 1] || '';
+      return `${toFa(d)} ${monthName} ${toFa(y)}`;
+    }
+    function shortJalaliFa(tarikh) {
+      const parts = tarikh.split('-');
+      if (parts.length !== 3) return toFa(tarikh);
+      const [y, m, d] = parts;
+      const yy = y.slice(-2);
+      return toFa(`${yy}/${m}/${d}`);
+    }
+
+    const PERIODS = [
+      { key: 'roozaneh',  labelFa: 'روزانه',    shortFa: 'روز',      description: 'بازده یک روزه' },
+      { key: 'haftegi',   labelFa: 'هفتگی',    shortFa: 'هفته',     description: 'بازده یک هفته‌ای' },
+      { key: 'mahaneh',   labelFa: 'ماهانه',   shortFa: 'ماه',      description: 'بازده یک ماهه' },
+      { key: 'fasli',     labelFa: 'فصلی',     shortFa: 'فصل',      description: 'بازده سه ماهه' },
+      { key: 'sheshmah',  labelFa: 'شش‌ماهانه', shortFa: 'شش ماه',  description: 'بازده شش ماهه' },
+      { key: 'salaneh',   labelFa: 'سالانه',   shortFa: 'سال',      description: 'بازده یک ساله' },
+    ];
+
+    const BUCKET_COLOR = {
+      top: '#10b981',
+      good: '#84cc16',
+      mid:  '#f59e0b',
+      low:  '#f97316',
+      bottom: '#f43f5e',
+    };
+    const BUCKET_BADGE_CLASS = {
+      top:    'bg-emerald-100 text-emerald-700',
+      good:   'bg-lime-100 text-lime-700',
+      mid:    'bg-amber-100 text-amber-700',
+      low:    'bg-orange-100 text-orange-700',
+      bottom: 'bg-rose-100 text-rose-700',
+    };
+
+    // ============ State ============
+    let state = {
+      snapshots: [],
+      period: 'roozaneh',
+      rangeDays: 0,
+      rankChart: null,
+      valueChart: null,
+    };
+
+    // ============ Init ============
+    function init() {
+      // Parse embedded data
+      let arr = window.FUND_DATA;
+      if (!Array.isArray(arr)) arr = [arr];
+      arr.sort((a, b) => (a.date < b.date ? -1 : 1));
+      state.snapshots = arr;
+
+      // Init charts
+      state.rankChart = echarts.init(document.getElementById('rank-chart'), null, { renderer: 'canvas' });
+      state.valueChart = echarts.init(document.getElementById('value-chart'), null, { renderer: 'canvas' });
+
+      window.addEventListener('resize', () => {
+        state.rankChart.resize();
+        state.valueChart.resize();
+      });
+
+      // Wire up refresh button (re-renders from embedded data — useful if you edit FUND_DATA live)
+      document.getElementById('refresh-btn').addEventListener('click', () => {
+        let arr2 = window.FUND_DATA;
+        if (!Array.isArray(arr2)) arr2 = [arr2];
+        arr2.sort((a, b) => (a.date < b.date ? -1 : 1));
+        state.snapshots = arr2;
+        renderAll();
+      });
+
+      renderAll();
+    }
+
+    function renderAll() {
+      renderFundHeader();
+      renderPeriodSelector();
+      renderRangeSelector();
+      renderStatsCards();
+      renderRankChart();
+      renderValueChart();
+      renderComparisonTable();
+      renderFooter();
+    }
+
+    // ============ Fund header ============
+    function renderFundHeader() {
+      const latest = state.snapshots[state.snapshots.length - 1];
+      const total = state.snapshots.length;
+      const container = document.getElementById('fund-header');
+      container.innerHTML = `
+        <div class="rounded-2xl overflow-hidden shadow-lg bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-800 text-white p-6 md:p-8">
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div class="space-y-3">
+              <div class="flex items-center gap-2">
+                <div class="w-10 h-10 rounded-xl bg-white/15 backdrop-blur flex items-center justify-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="20" x="4" y="2" rx="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01M16 6h.01M8 10h.01M16 10h.01M8 14h.01M16 14h.01"/></svg>
+                </div>
+                <span class="px-2.5 py-1 text-xs rounded-full bg-white/15 text-white border border-white/20">صندوق ${latest.fundTypeName}</span>
+              </div>
+              <div>
+                <h1 class="text-2xl md:text-3xl font-bold tracking-tight">${latest.name}</h1>
+                <p class="text-emerald-100/90 text-sm mt-1">گزارش رتبه‌بندی در میان صندوق‌های هم‌گروه</p>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-3 md:gap-4 md:flex md:items-center">
+              ${headerStat('شماره ثبت', toFa(latest.regNo))}
+              ${headerStat('تعداد هم‌گروه', toFa(latest.peerGroupSize))}
+              ${headerStat('آخرین به‌روزرسانی', formatJalaliFa(latest.tarikh))}
+              ${headerStat('بازه داده', `${toFa(total)} روز`)}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+    function headerStat(label, value) {
+      return `
+        <div class="bg-white/10 backdrop-blur rounded-xl px-4 py-2.5 min-w-[140px]">
+          <div class="text-emerald-100/80 text-xs mb-0.5">${label}</div>
+          <div class="font-semibold text-base md:text-lg">${value}</div>
+        </div>
+      `;
+    }
+
+    // ============ Period selector ============
+    function renderPeriodSelector() {
+      const container = document.getElementById('period-selector');
+      container.innerHTML = `
+        <div class="text-xs text-muted-foreground mb-2">انتخاب بازه زمانی</div>
+        <div class="flex flex-wrap gap-2" id="period-btns">
+          ${PERIODS.map(p => `
+            <button data-period="${p.key}"
+              class="period-btn px-4 py-2 text-sm font-medium rounded-md border transition-colors ${state.period === p.key ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-background hover:bg-muted'}">
+              ${p.labelFa}
+            </button>
+          `).join('')}
+        </div>
+      `;
+      container.querySelectorAll('.period-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.period = btn.dataset.period;
+          renderPeriodSelector();
+          renderStatsCards();
+          renderRankChart();
+          renderValueChart();
+        });
+      });
+    }
+
+    // ============ Range selector ============
+    function renderRangeSelector() {
+      const ranges = [
+        { label: 'همه', days: 0 },
+        { label: '۳۰ روز', days: 30 },
+        { label: '۶۰ روز', days: 60 },
+        { label: '۹۰ روز', days: 90 },
+      ];
+      const container = document.getElementById('range-selector');
+      container.innerHTML = `
+        <div class="text-xs text-muted-foreground mb-2">بازه نمایش نمودار</div>
+        <div class="flex flex-wrap gap-2" id="range-btns">
+          ${ranges.map(r => `
+            <button data-days="${r.days}"
+              class="range-btn px-3 py-1.5 text-xs font-medium rounded-md border transition-colors ${state.rangeDays === r.days ? 'bg-teal-600 text-white border-teal-600' : 'bg-background hover:bg-muted'}">
+              ${r.label}
+            </button>
+          `).join('')}
+        </div>
+      `;
+      container.querySelectorAll('.range-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.rangeDays = +btn.dataset.days;
+          renderRangeSelector();
+          renderRankChart();
+          renderValueChart();
+        });
+      });
+    }
+
+    // ============ Stat cards ============
+    function renderStatsCards() {
+      const snaps = state.snapshots;
+      const latest = snaps[snaps.length - 1];
+      const peer = latest.peerGroupSize;
+      const period = state.period;
+      const periodMeta = PERIODS.find(p => p.key === period);
+
+      const periodData = snaps.map(s => ({ date: s.date, rank: s.ranks[period], value: s.values[period] }));
+      const ranks = periodData.map(d => d.rank);
+      const bestRank = Math.min(...ranks);
+      const worstRank = Math.max(...ranks);
+      const avgRank = ranks.reduce((a, b) => a + b, 0) / ranks.length;
+      const latestRank = latest.ranks[period];
+      const latestValue = latest.values[period];
+      const prevRank = periodData.length > 1 ? periodData[periodData.length - 2].rank : latestRank;
+      const rankDelta = latestRank - prevRank;
+      const latestPct = rankToPercentile(latestRank, peer);
+      const bucket = percentileBucket(latestPct);
+
+      let deltaHtml;
+      if (rankDelta < 0) {
+        deltaHtml = `<span class="text-emerald-600 font-medium">بهبود ${toFa(Math.abs(rankDelta))} رتبه</span>`;
+      } else if (rankDelta > 0) {
+        deltaHtml = `<span class="text-rose-600 font-medium">افت ${toFa(rankDelta)} رتبه</span>`;
+      } else {
+        deltaHtml = `<span class="text-muted-foreground">بدون تغییر</span>`;
+      }
+
+      const valueColor = latestValue > 0 ? 'text-emerald-600' : latestValue < 0 ? 'text-rose-600' : 'text-muted-foreground';
+
+      // Period comparison mini grid
+      const miniGrid = PERIODS.map(p => {
+        const r = latest.ranks[p.key];
+        const pct = rankToPercentile(r, peer);
+        const b = percentileBucket(pct);
+        return `
+          <div class="rounded-md p-1.5 text-center bg-muted/40" title="${p.labelFa}: رتبه ${r}">
+            <div class="text-[10px] text-muted-foreground">${p.shortFa}</div>
+            <div class="font-semibold text-sm">${toFa(r)}</div>
+            <div class="h-1 rounded-full mt-1" style="background:${BUCKET_COLOR[b.tone]}"></div>
+          </div>
+        `;
+      }).join('');
+
+      document.getElementById('stats-cards').innerHTML = `
+        <!-- Current rank card -->
+        <div class="bg-white dark:bg-gray-900 rounded-xl border shadow-sm p-6">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs text-muted-foreground font-medium">رتبه فعلی (${periodMeta.labelFa})</span>
+            <div class="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>
+            </div>
+          </div>
+          <div class="flex items-baseline gap-2">
+            <span class="text-3xl font-bold text-emerald-600">${toFa(latestRank)}</span>
+            <span class="text-sm text-muted-foreground">از ${toFa(peer)}</span>
+          </div>
+          <div class="flex items-center gap-1 text-xs mt-2">${deltaHtml}</div>
+          <div class="mt-3 space-y-1.5">
+            <div class="flex items-center justify-between text-xs">
+              <span class="text-muted-foreground">صدک (percentile)</span>
+              <span class="font-semibold">${toFa(latestPct.toFixed(0))}٪</span>
+            </div>
+            <div class="h-2 rounded-full bg-muted overflow-hidden">
+              <div class="h-full rounded-full" style="width:${latestPct}%;background:${BUCKET_COLOR[bucket.tone]}"></div>
+            </div>
+            <div class="text-[10px] text-muted-foreground">در ${bucket.label} صندوق‌های هم‌گروه قرار دارد</div>
+          </div>
+        </div>
+
+        <!-- Current value card -->
+        <div class="bg-white dark:bg-gray-900 rounded-xl border shadow-sm p-6">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs text-muted-foreground font-medium">بازده فعلی (${periodMeta.labelFa})</span>
+            <div class="w-8 h-8 rounded-lg bg-teal-100 flex items-center justify-center">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0d9488" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            </div>
+          </div>
+          <div class="flex items-baseline gap-2">
+            <span class="text-3xl font-bold ${valueColor}">${formatPercentFa(latestValue)}</span>
+          </div>
+          <div class="text-xs text-muted-foreground mt-2">ارزش‌گذاری بر اساس بازده ${periodMeta.labelFa}</div>
+          <div class="mt-3 grid grid-cols-2 gap-2 text-xs">
+            <div class="rounded-md bg-muted/60 p-2">
+              <div class="text-muted-foreground">بهترین رتبه</div>
+              <div class="font-semibold text-emerald-600">${toFa(bestRank)} از ${toFa(peer)}</div>
+            </div>
+            <div class="rounded-md bg-muted/60 p-2">
+              <div class="text-muted-foreground">بدترین رتبه</div>
+              <div class="font-semibold text-rose-600">${toFa(worstRank)} از ${toFa(peer)}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Average rank card -->
+        <div class="bg-white dark:bg-gray-900 rounded-xl border shadow-sm p-6">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs text-muted-foreground font-medium">میانگین رتبه در دوره</span>
+            <div class="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+            </div>
+          </div>
+          <div class="flex items-baseline gap-2">
+            <span class="text-3xl font-bold text-amber-600">${toFa(avgRank.toFixed(1))}</span>
+            <span class="text-sm text-muted-foreground">از ${toFa(peer)}</span>
+          </div>
+          <div class="text-xs text-muted-foreground mt-2">میانگین در ${toFa(snaps.length)} روز مشاهده</div>
+          <div class="mt-3 space-y-1 text-xs">
+            <div class="flex justify-between">
+              <span class="text-muted-foreground">میانگین صدک</span>
+              <span class="font-semibold">${toFa(rankToPercentile(Math.round(avgRank), peer).toFixed(0))}٪</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-muted-foreground">نوسان (min→max)</span>
+              <span class="font-semibold">${toFa(bestRank)} ← ${toFa(worstRank)}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Period comparison compact -->
+        <div class="bg-white dark:bg-gray-900 rounded-xl border shadow-sm p-6">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs text-muted-foreground font-medium">مقایسه بازه‌ها (رتبه فعلی)</span>
+            <div class="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>
+            </div>
+          </div>
+          <div class="grid grid-cols-3 gap-1.5 mt-1">${miniGrid}</div>
+        </div>
+      `;
+    }
+
+    // ============ Rank chart ============
+    function renderRankChart() {
+      const snaps = state.snapshots;
+      const period = state.period;
+      const periodMeta = PERIODS.find(p => p.key === period);
+      const peer = snaps[snaps.length - 1].peerGroupSize;
+
+      document.getElementById('rank-chart-title').textContent = `روند رتبه در بازه ${periodMeta.labelFa}`;
+
+      const sliced = state.rangeDays > 0 ? snaps.slice(-state.rangeDays) : snaps;
+      const xData = sliced.map(s => shortJalaliFa(s.tarikh));
+      const rankData = sliced.map(s => s.ranks[period]);
+      const allData = sliced.map(s => ({ tarikh: s.tarikh, rank: s.ranks[period], peer: s.peerGroupSize }));
+
+      const top25 = Math.ceil(peer * 0.25);
+      const top50 = Math.ceil(peer * 0.5);
+      const top75 = Math.ceil(peer * 0.75);
+
+      const option = {
+        tooltip: {
+          trigger: 'axis',
+          formatter: (params) => {
+            const idx = params[0].dataIndex;
+            const item = allData[idx];
+            const pct = rankToPercentile(item.rank, item.peer);
+            return `<div style="direction:rtl;text-align:right;font-family:Vazirmatn">
+              <div style="font-weight:600;margin-bottom:4px">${toFa(item.tarikh)}</div>
+              <div>رتبه: <b>${toFa(item.rank)}</b> از ${toFa(item.peer)}</div>
+              <div>صدک: <b>${toFa(pct.toFixed(0))}٪</b></div>
+            </div>`;
+          },
+          backgroundColor: 'rgba(255,255,255,0.98)',
+          borderColor: '#e5e7eb',
+          borderWidth: 1,
+          padding: 10,
+          textStyle: { fontFamily: 'Vazirmatn', fontSize: 12 },
+        },
+        grid: { left: 40, right: 20, top: 20, bottom: 30 },
+        xAxis: {
+          type: 'category',
+          data: xData,
+          axisLabel: { fontSize: 10, color: '#6b7280', fontFamily: 'Vazirmatn' },
+          axisLine: { lineStyle: { color: '#e5e7eb' } },
+          axisTick: { show: false },
+        },
+        yAxis: {
+          type: 'value',
+          min: 1,
+          max: peer,
+          inverse: true, // reversed so rank 1 is at the top
+          axisLabel: {
+            fontSize: 10,
+            color: '#6b7280',
+            fontFamily: 'Vazirmatn',
+            formatter: (v) => toFa(v),
+          },
+          axisLine: { lineStyle: { color: '#e5e7eb' } },
+          splitLine: { lineStyle: { type: 'dashed', color: '#f3f4f6' } },
+        },
+        series: [
+          // Background band series (invisible area fills)
+          {
+            type: 'line',
+            data: xData.map(() => top25),
+            lineStyle: { opacity: 0 },
+            stack: 'bands-top',
+            symbol: 'none',
+            silent: true,
+            areaStyle: { color: 'rgba(16,185,129,0.10)' },
+          },
+          {
+            type: 'line',
+            data: xData.map(() => top50 - top25),
+            lineStyle: { opacity: 0 },
+            stack: 'bands-top',
+            symbol: 'none',
+            silent: true,
+            areaStyle: { color: 'rgba(132,204,22,0.08)' },
+          },
+          {
+            type: 'line',
+            data: xData.map(() => top75 - top50),
+            lineStyle: { opacity: 0 },
+            stack: 'bands-top',
+            symbol: 'none',
+            silent: true,
+            areaStyle: { color: 'rgba(245,158,11,0.08)' },
+          },
+          {
+            type: 'line',
+            data: xData.map(() => peer - top75),
+            lineStyle: { opacity: 0 },
+            stack: 'bands-top',
+            symbol: 'none',
+            silent: true,
+            areaStyle: { color: 'rgba(244,63,94,0.08)' },
+          },
+          // Actual rank line
+          {
+            type: 'line',
+            data: rankData,
+            smooth: true,
+            symbol: 'none',
+            lineStyle: { color: '#059669', width: 2.5 },
+            itemStyle: { color: '#059669' },
+            emphasis: { focus: 'series' },
+            markLine: {
+              silent: true,
+              symbol: 'none',
+              lineStyle: { color: '#10b981', type: 'dashed', opacity: 0.4 },
+              data: [{ yAxis: top25, label: { show: false } }],
+            },
+          },
+        ],
+      };
+
+      state.rankChart.setOption(option, true);
+
+      // Legend
+      document.getElementById('rank-legend').innerHTML = [
+        bandLegend('#10b981', `برتر (۱ تا ${toFa(top25)})`),
+        bandLegend('#84cc16', `خوب (${toFa(top25)} تا ${toFa(top50)})`),
+        bandLegend('#f59e0b', `متوسط (${toFa(top50)} تا ${toFa(top75)})`),
+        bandLegend('#f43f5e', `ضعیف (${toFa(top75)} تا ${toFa(peer)})`),
+      ].join('');
+    }
+    function bandLegend(color, label) {
+      return `<div class="flex items-center gap-1.5">
+        <span class="w-3 h-3 rounded-sm inline-block" style="background:${color};opacity:0.5"></span>
+        <span class="text-muted-foreground">${label}</span>
+      </div>`;
+    }
+
+    // ============ Value chart ============
+    function renderValueChart() {
+      const snaps = state.snapshots;
+      const period = state.period;
+      const periodMeta = PERIODS.find(p => p.key === period);
+
+      document.getElementById('value-chart-title').textContent = `روند بازده در بازه ${periodMeta.labelFa}`;
+
+      const sliced = state.rangeDays > 0 ? snaps.slice(-state.rangeDays) : snaps;
+      const xData = sliced.map(s => shortJalaliFa(s.tarikh));
+      const valueData = sliced.map(s => s.values[period]);
+      const allData = sliced.map(s => ({ tarikh: s.tarikh, value: s.values[period] }));
+
+      const values = valueData;
+      const minV = Math.min(...values);
+      const maxV = Math.max(...values);
+      const pad = Math.max(0.5, (maxV - minV) * 0.15);
+
+      const option = {
+        tooltip: {
+          trigger: 'axis',
+          formatter: (params) => {
+            const idx = params[0].dataIndex;
+            const item = allData[idx];
+            return `<div style="direction:rtl;text-align:right;font-family:Vazirmatn">
+              <div style="font-weight:600;margin-bottom:4px">${toFa(item.tarikh)}</div>
+              <div>بازده: <b>${formatPercentFa(item.value)}</b></div>
+            </div>`;
+          },
+          backgroundColor: 'rgba(255,255,255,0.98)',
+          borderColor: '#e5e7eb',
+          borderWidth: 1,
+          padding: 10,
+          textStyle: { fontFamily: 'Vazirmatn', fontSize: 12 },
+        },
+        grid: { left: 50, right: 20, top: 20, bottom: 30 },
+        xAxis: {
+          type: 'category',
+          data: xData,
+          axisLabel: { fontSize: 10, color: '#6b7280', fontFamily: 'Vazirmatn' },
+          axisLine: { lineStyle: { color: '#e5e7eb' } },
+          axisTick: { show: false },
+        },
+        yAxis: {
+          type: 'value',
+          min: Math.floor((minV - pad) * 10) / 10,
+          max: Math.ceil((maxV + pad) * 10) / 10,
+          axisLabel: {
+            fontSize: 10,
+            color: '#6b7280',
+            fontFamily: 'Vazirmatn',
+            formatter: (v) => toFa(v.toFixed(1)),
+          },
+          axisLine: { lineStyle: { color: '#e5e7eb' } },
+          splitLine: { lineStyle: { type: 'dashed', color: '#f3f4f6' } },
+        },
+        series: [
+          {
+            type: 'line',
+            data: valueData,
+            smooth: true,
+            symbol: 'none',
+            lineStyle: { color: '#0d9488', width: 2.5 },
+            itemStyle: { color: '#0d9488' },
+            areaStyle: {
+              color: {
+                type: 'linear',
+                x: 0, y: 0, x2: 0, y2: 1,
+                colorStops: [
+                  { offset: 0, color: 'rgba(20,184,166,0.35)' },
+                  { offset: 1, color: 'rgba(20,184,166,0.02)' },
+                ],
+              },
+            },
+            markLine: {
+              silent: true,
+              symbol: 'none',
+              lineStyle: { color: '#9ca3af', type: 'dashed', opacity: 0.5 },
+              data: [{ yAxis: 0, label: { show: false } }],
+            },
+          },
+        ],
+      };
+      state.valueChart.setOption(option, true);
+    }
+
+    // ============ Period comparison table ============
+    function renderComparisonTable() {
+      const latest = state.snapshots[state.snapshots.length - 1];
+      const peer = latest.peerGroupSize;
+      const tbody = document.getElementById('comparison-tbody');
+      tbody.innerHTML = PERIODS.map(p => {
+        const r = latest.ranks[p.key];
+        const v = latest.values[p.key];
+        const pct = rankToPercentile(r, peer);
+        const b = percentileBucket(pct);
+        const valueColor = v > 0 ? 'text-emerald-600' : v < 0 ? 'text-rose-600' : 'text-muted-foreground';
+        return `
+          <tr class="border-b last:border-b-0 hover:bg-muted/30">
+            <td class="p-3">
+              <div class="font-medium">${p.labelFa}</div>
+              <div class="text-xs text-muted-foreground">${p.description}</div>
+            </td>
+            <td class="p-3 font-bold text-base">${toFa(r)}</td>
+            <td class="p-3 text-muted-foreground">${toFa(peer)}</td>
+            <td class="p-3 font-semibold">${toFa(pct.toFixed(0))}٪</td>
+            <td class="p-3 font-mono ${valueColor}">${formatPercentFa(v)}</td>
+            <td class="p-3">
+              <span class="px-2 py-0.5 text-xs rounded-full font-medium ${BUCKET_BADGE_CLASS[b.tone]}">${b.label}</span>
+            </td>
+            <td class="p-3">
+              <div class="relative h-2.5 w-full rounded-full bg-muted overflow-hidden">
+                <div class="h-full rounded-full" style="width:${pct}%;background:${BUCKET_COLOR[b.tone]}"></div>
+              </div>
+              <div class="text-[10px] text-muted-foreground mt-0.5" dir="ltr">rank ${r}/${peer}</div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // ============ Footer ============
+    function renderFooter() {
+      const latest = state.snapshots[state.snapshots.length - 1];
+      const earliest = state.snapshots[0];
+      document.getElementById('footer-info').innerHTML = `
+        <span><span class="font-medium text-foreground">نام صندوق:</span> ${latest.name}</span>
+        <span><span class="font-medium text-foreground">نوع:</span> ${latest.fundTypeName}</span>
+        <span><span class="font-medium text-foreground">شماره ثبت:</span> ${toFa(latest.regNo)}</span>
+        <span><span class="font-medium text-foreground">بازه داده:</span> ${formatJalaliFa(earliest.tarikh)} تا ${formatJalaliFa(latest.tarikh)} (${toFa(state.snapshots.length)} رکورد)</span>
+      `;
+    }
+
+    // ============ Boot ============
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  </script>
+</body>
+</html>
