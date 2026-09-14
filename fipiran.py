@@ -39,7 +39,7 @@ doreha = {
     }
 
 
-HISTORY_FILE = Path("history.json")
+HISTORY_FILE = Path("fund_data.json")
  
 TARGET_REG_NO = 10787
  
