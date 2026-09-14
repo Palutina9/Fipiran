@@ -11,8 +11,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import jdatetime
 
-fundcompare_url = "https://fipiran.ir/services/fund/fundcompare"
-fundtype_url = "https://fipiran.ir/services/fund/fundtype"
+fundcompare_url = "https://fipiran.com/services/fund/fundcompare"
+fundtype_url = "https://fipiran.com/services/fund/fundtype"
 
 current_date = datetime(2026, 9, 14).date()
 end_date = datetime.today().date()
