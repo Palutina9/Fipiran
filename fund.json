@@ -1,13 +1,5 @@
-{
-    "status": 200,
-    "message": "",
-    "pageNumber": 1,
-    "pageSize": 506,
-    "totalCount": 506,
-    "items": [
-        {
-            "regNo": "12433",
-            "groupId": 0,
+"regNo": "12433",
+        "groupId": 0,
             "name": "سهامی اهرمی شاخصی کیان",
             "rankOfSeason": 0.0,
             "rankOf12Month": 0.0,
@@ -24376,5 +24368,3 @@
             "isCompleted": false,
             "fundPublisher": 0
         }
-    ]
-}
